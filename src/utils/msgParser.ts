@@ -51,7 +51,22 @@ export const parseMsg = async (file: File): Promise<ParsedEmail> => {
 
         // Process Attachments & Inline Images
         const attachments: Attachment[] = [];
-        let body = fileData.bodyHtml || fileData.body || "";
+        let body = fileData.bodyHtml;
+
+        if (!body) {
+          // If no HTML body, convert plain text to HTML
+          const plainText = fileData.body || "";
+          body = plainText
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;")
+            // Linkify URLs
+            .replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-amber-600 hover:underline">$1</a>')
+            // Newlines to <br>
+            .replace(/\n/g, "<br>");
+        }
 
         if (fileData.attachments && fileData.attachments.length > 0) {
           fileData.attachments.forEach((att, index) => {

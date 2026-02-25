@@ -270,7 +270,7 @@ export default function App() {
                       dangerouslySetInnerHTML={{ 
                         __html: DOMPurify.sanitize(parsedData?.body || "", { 
                           ADD_TAGS: ['img'], 
-                          ADD_ATTR: ['src', 'alt', 'width', 'height', 'style'] 
+                          ADD_ATTR: ['src', 'alt', 'width', 'height', 'style', 'target', 'rel', 'class'] 
                         }) 
                       }}
                     />
