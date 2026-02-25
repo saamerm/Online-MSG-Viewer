@@ -1,0 +1,5 @@
+{
+  "name": "Sonesta Document Parser",
+  "description": "A modern, animated SPA for parsing and viewing .msg files for Sonesta franchise partners.",
+  "requestFramePermissions": []
+}
