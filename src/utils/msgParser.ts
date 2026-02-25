@@ -93,9 +93,11 @@ export const parseMsg = async (file: File): Promise<ParsedEmail> => {
             // Replace CID in body with Blob URL
             if (isInline && contentId) {
               // Regex to replace cid:contentId with the blob URL
-              // We need to be careful with regex special characters in contentId
+              // Handle both quoted and unquoted attributes, and potential variations
               const escapedCid = contentId.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-              const regex = new RegExp(`src=["']cid:${escapedCid}["']`, 'gi');
+              
+              // Match src="cid:..." or src='cid:...' or src=cid:...
+              const regex = new RegExp(`src=(["']?)cid:${escapedCid}\\1`, 'gi');
               body = body.replace(regex, `src="${url}"`);
             }
           });

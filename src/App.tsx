@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import DOMPurify from 'dompurify';
-import { Upload, FileText, Download, AlertCircle, Loader2, Mail, Calendar, User, Users } from 'lucide-react';
+import { Upload, FileText, Download, AlertCircle, Loader2, Mail, Calendar, User, Users, Code, Eye } from 'lucide-react';
 import { parseMsg, ParsedEmail, Attachment } from './utils/msgParser';
+import { parseEml } from './utils/emlParser';
 
 // Sonesta Brand Colors
 const COLORS = {
@@ -18,6 +19,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showRawHtml, setShowRawHtml] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -30,21 +32,28 @@ export default function App() {
   }, []);
 
   const processFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.msg')) {
-      setError("Please upload a valid .msg file.");
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.msg') && !fileName.endsWith('.eml')) {
+      setError("Please upload a valid .msg or .eml file.");
       return;
     }
 
     setLoading(true);
     setError(null);
     setParsedData(null);
+    setShowRawHtml(false);
 
     try {
-      const data = await parseMsg(file);
+      let data: ParsedEmail;
+      if (fileName.endsWith('.msg')) {
+        data = await parseMsg(file);
+      } else {
+        data = await parseEml(file);
+      }
       setParsedData(data);
     } catch (err: any) {
       console.error(err);
-      setError("Failed to parse the file. It might be corrupted or not a valid Outlook message.");
+      setError("Failed to parse the file. It might be corrupted or not a valid email file.");
     } finally {
       setLoading(false);
     }
@@ -65,6 +74,7 @@ export default function App() {
   const resetViewer = () => {
     setParsedData(null);
     setError(null);
+    setShowRawHtml(false);
   };
 
   return (
@@ -105,7 +115,7 @@ export default function App() {
             >
               <div className="text-center mb-10">
                 <h2 className="text-3xl font-semibold text-gray-900 mb-3">Upload MeetingPackage Export</h2>
-                <p className="text-gray-500 text-lg">Drag and drop your .msg file here to view its contents instantly.</p>
+                <p className="text-gray-500 text-lg">Drag and drop your .msg or .eml file here to view its contents instantly.</p>
               </div>
 
               <div
@@ -125,7 +135,7 @@ export default function App() {
               >
                 <input 
                   type="file" 
-                  accept=".msg" 
+                  accept=".msg,.eml" 
                   onChange={handleFileInput} 
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -140,7 +150,7 @@ export default function App() {
                 <h3 className="text-xl font-medium text-gray-900 mb-2">
                   {isDragging ? "Drop file to parse" : "Click or drag file to upload"}
                 </h3>
-                <p className="text-sm text-gray-500">Supported format: .msg (Outlook Message)</p>
+                <p className="text-sm text-gray-500">Supported formats: .msg, .eml</p>
               </div>
 
               {error && (
@@ -258,22 +268,39 @@ export default function App() {
               {/* Main Content: Subject & Body */}
               <div className="lg:col-span-2 space-y-6">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[600px]">
-                  <div className="p-8 border-b border-gray-100">
+                  <div className="p-8 border-b border-gray-100 flex justify-between items-start gap-4">
                     <h1 className="text-2xl font-bold text-gray-900 leading-tight">
                       {parsedData?.headers.subject}
                     </h1>
+                    <button
+                      onClick={() => setShowRawHtml(!showRawHtml)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
+                      title={showRawHtml ? "View Formatted" : "View Raw HTML"}
+                    >
+                      {showRawHtml ? <Eye className="w-4 h-4" /> : <Code className="w-4 h-4" />}
+                      <span className="hidden sm:inline">{showRawHtml ? "Formatted" : "Raw HTML"}</span>
+                    </button>
                   </div>
                   
-                  <div className="p-8 bg-white">
-                    <div 
-                      className="prose prose-stone max-w-none prose-headings:font-semibold prose-a:text-amber-600 hover:prose-a:text-amber-700 prose-img:rounded-lg prose-img:shadow-sm"
-                      dangerouslySetInnerHTML={{ 
-                        __html: DOMPurify.sanitize(parsedData?.body || "", { 
-                          ADD_TAGS: ['img'], 
-                          ADD_ATTR: ['src', 'alt', 'width', 'height', 'style', 'target', 'rel', 'class'] 
-                        }) 
-                      }}
-                    />
+                  <div className="p-8 bg-white relative">
+                    {showRawHtml ? (
+                      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 overflow-x-auto">
+                        <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap break-all">
+                          {parsedData?.body}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div 
+                        className="prose prose-stone max-w-none prose-headings:font-semibold prose-a:text-amber-600 hover:prose-a:text-amber-700 prose-img:rounded-lg prose-img:shadow-sm text-gray-900"
+                        dangerouslySetInnerHTML={{ 
+                          __html: DOMPurify.sanitize(parsedData?.body || "", { 
+                            ADD_TAGS: ['img', 'style', 'font', 'span', 'div', 'br', 'p', 'a', 'b', 'i', 'u', 'strong', 'em', 'blockquote', 'ul', 'ol', 'li'], 
+                            ADD_ATTR: ['src', 'alt', 'width', 'height', 'style', 'target', 'rel', 'class', 'id', 'color', 'face', 'size', 'align', 'valign', 'bgcolor', 'border', 'cellpadding', 'cellspacing'],
+                            ADD_URI_SCHEMES: ['data', 'blob', 'http', 'https', 'mailto']
+                          }) 
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
