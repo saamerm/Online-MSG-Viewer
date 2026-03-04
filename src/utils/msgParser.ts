@@ -1,5 +1,9 @@
 import MsgReader from '@kenjiuno/msgreader';
-
+import { parseRtfToHtml } from './rtfParser';
+import { deEncapsulateSync } from 'rtf-stream-parser';
+import iconv from 'iconv-lite';
+import { decompressRTF } from '@kenjiuno/decompressrtf';
+import { Buffer } from 'buffer';
 export interface Attachment {
   fileName: string;
   contentId?: string;
@@ -24,7 +28,7 @@ export const parseMsg = async (file: File): Promise<ParsedEmail> => {
   return new Promise((resolve, reject) => {
     const fileReader = new FileReader();
 
-    fileReader.onload = function (e) {
+    fileReader.onload = async function (e) {
       if (!e.target || !e.target.result) {
         reject(new Error("Failed to read file"));
         return;
@@ -51,7 +55,46 @@ export const parseMsg = async (file: File): Promise<ParsedEmail> => {
 
         // Process Attachments & Inline Images
         const attachments: Attachment[] = [];
-        let body = fileData.bodyHtml;
+        
+        // Try to get HTML from RTF first if available, as it might be cleaner than bodyHtml
+        // (The user specifically requested using rtf-stream-parser for better results)
+        let body = "";
+        console.log("Attempting to parse RTF content for email body...");
+        if (fileData.compressedRtf) {
+          // const rtfBlob = decompressRTF(Array.from(fileData.compressedRtf));
+          // const buffer = Buffer.from(rtfBlob)
+          // const result = deEncapsulateSync(buffer, { decode: iconv.decode });
+          try {
+            let rtfContent = "";
+            if (typeof fileData.compressedRtf === 'string'){
+              console.log("fileData.compressedRtf is a string")
+              rtfContent = fileData.compressedRtf;
+            } else {
+              const decompressed = decompressRTF(Array.from(fileData.compressedRtf))
+              if (decompressed){
+                const buffer = Buffer.from(decompressed)
+                rtfContent = new TextDecoder().decode(buffer)
+              } else {
+                console.log("No decompressed")
+              }
+            }
+            if (rtfContent){
+              const rtfHtml = await parseRtfToHtml(rtfContent)
+              if (rtfHtml) {
+                body = rtfHtml
+              }
+            } else {
+              console.log("No rtfContent")
+            }
+          } catch (err) {
+            console.warn("Failed to parse RTF", err);
+          }
+        }
+
+        // Fallback to existing bodyHtml or plain text if RTF parsing failed or wasn't HTML-encapsulated
+        if (!body) {
+          body = fileData.bodyHtml;
+        }
 
         if (!body) {
           // If no HTML body, convert plain text to HTML
