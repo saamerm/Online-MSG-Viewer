@@ -1,7 +1,5 @@
 import MsgReader from '@kenjiuno/msgreader';
 import { parseRtfToHtml } from './rtfParser';
-import { deEncapsulateSync } from 'rtf-stream-parser';
-import iconv from 'iconv-lite';
 import { decompressRTF } from '@kenjiuno/decompressrtf';
 import { Buffer } from 'buffer';
 export interface Attachment {
@@ -56,59 +54,73 @@ export const parseMsg = async (file: File): Promise<ParsedEmail> => {
         // Process Attachments & Inline Images
         const attachments: Attachment[] = [];
         
-        // Try to get HTML from RTF first if available, as it might be cleaner than bodyHtml
-        // (The user specifically requested using rtf-stream-parser for better results)
+        // Try to get HTML from RTF first (Outlook often stores HTML inside compressed RTF with encapsulation).
+        // Pass Buffer to parser so it can use the RTF's codepage (e.g. ansicpg1252) instead of assuming UTF-8.
         let body = "";
-        console.log("Attempting to parse RTF content for email body...");
+
         if (fileData.compressedRtf) {
-          // const rtfBlob = decompressRTF(Array.from(fileData.compressedRtf));
-          // const buffer = Buffer.from(rtfBlob)
-          // const result = deEncapsulateSync(buffer, { decode: iconv.decode });
           try {
-            let rtfContent = "";
-            if (typeof fileData.compressedRtf === 'string'){
-              console.log("fileData.compressedRtf is a string")
-              rtfContent = fileData.compressedRtf;
+            let rtfInput: string | Buffer | Uint8Array;
+            if (typeof fileData.compressedRtf === 'string') {
+              rtfInput = fileData.compressedRtf;
             } else {
-              const decompressed = decompressRTF(Array.from(fileData.compressedRtf))
-              if (decompressed){
-                const buffer = Buffer.from(decompressed)
-                rtfContent = new TextDecoder().decode(buffer)
+              const decompressed = decompressRTF(Array.from(fileData.compressedRtf));
+              if (decompressed) {
+                rtfInput = Buffer.from(decompressed);
               } else {
-                console.log("No decompressed")
+                rtfInput = "";
               }
             }
-            if (rtfContent){
-              const rtfHtml = await parseRtfToHtml(rtfContent)
-              if (rtfHtml) {
-                body = rtfHtml
-              }
-            } else {
-              console.log("No rtfContent")
+            if (rtfInput) {
+              const rtfHtml = await parseRtfToHtml(rtfInput);
+              if (rtfHtml?.trim()) body = rtfHtml;
             }
           } catch (err) {
             console.warn("Failed to parse RTF", err);
           }
         }
 
-        // Fallback to existing bodyHtml or plain text if RTF parsing failed or wasn't HTML-encapsulated
-        if (!body) {
-          body = fileData.bodyHtml;
+        // Fallback to HTML body if the library extracted it (e.g. PR_HTML / bodyHtml or html property)
+        // Note: PR_HTML (0x10130102) is stored as BINARY in MSG - the library returns raw bytes, not a string
+        if (!body?.trim()) {
+          const htmlRaw = fileData.bodyHtml ?? (fileData as { html?: string | Uint8Array | Buffer | number[] }).html;
+          if (htmlRaw != null) {
+            if (typeof htmlRaw === 'string' && htmlRaw.trim()) {
+              body = htmlRaw;
+            } else {
+              // PR_HTML (0x10130102) is stored as BINARY - library returns raw bytes
+              const bytes =
+                htmlRaw instanceof Uint8Array
+                  ? htmlRaw
+                  : htmlRaw instanceof ArrayBuffer
+                    ? new Uint8Array(htmlRaw)
+                    : Buffer.isBuffer(htmlRaw)
+                      ? new Uint8Array(htmlRaw)
+                      : Array.isArray(htmlRaw)
+                        ? new Uint8Array(htmlRaw)
+                        : null;
+              if (bytes && bytes.length > 0) {
+                body = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+                if (!body?.trim()) body = "";
+              }
+            }
+          }
         }
 
-        if (!body) {
-          // If no HTML body, convert plain text to HTML
+        if (!body?.trim()) {
           const plainText = fileData.body || "";
-          body = plainText
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;")
-            // Linkify URLs
-            .replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-amber-600 hover:underline">$1</a>')
-            // Newlines to <br>
-            .replace(/\n/g, "<br>");
+          if (plainText.trim()) {
+            body = plainText
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;")
+              .replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-amber-600 hover:underline">$1</a>')
+              .replace(/\n/g, "<br>");
+          } else {
+            body = '<p style="color: #999; font-style: italic;">This email has no body content.</p>';
+          }
         }
 
         if (fileData.attachments && fileData.attachments.length > 0) {
