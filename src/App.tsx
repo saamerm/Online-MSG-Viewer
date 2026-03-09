@@ -114,7 +114,7 @@ export default function App() {
               className="max-w-2xl mx-auto"
             >
               <div className="text-center mb-10">
-                <h2 className="text-3xl font-semibold text-gray-900 mb-3">Upload MeetingPackage Export</h2>
+                <h2 className="text-3xl font-semibold text-gray-900 mb-3">Upload Email Export</h2>
                 <p className="text-gray-500 text-lg">Drag and drop your .msg or .eml file here to view its contents instantly.</p>
               </div>
 
