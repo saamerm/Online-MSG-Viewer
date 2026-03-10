@@ -22,13 +22,11 @@
     "express": "^4.21.2",
     "firebase": "^12.9.0",
     "framer-motion": "^12.34.3",
-    "iconv-lite": "^0.7.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "postal-mime": "^2.7.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "rtf-stream-parser": "^3.8.1",
     "vite": "^6.2.0"
   },
   "devDependencies": {
